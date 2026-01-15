@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Shadcn Base - Dark Theme */
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 8%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 187 100% 50%;
+    --primary-foreground: 222 47% 6%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 187 100% 50%;
+    --radius: 0.5rem;
+
+    /* HUD Theme */
+    --hud-primary: #00f0ff;
+    --hud-secondary: #ff00aa;
+    --hud-success: #00ff88;
+    --hud-warning: #ffaa00;
+    --hud-danger: #ff0044;
+    --darkness-color: #1a0a0a;
+    --darkness-text: #ff2222;
+    --glow-intensity: 0.8;
+    --scanline-opacity: 0.03;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* HUD Effects */
+.hud-glow {
+  box-shadow:
+    0 0 5px var(--hud-primary),
+    0 0 10px var(--hud-primary),
+    0 0 20px var(--hud-primary);
+}
+
+.hud-glow-subtle {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hud-primary) 30%, transparent);
+}
+
+.text-glow {
+  text-shadow: 0 0 10px var(--hud-primary);
+}
+
+/* Scan Lines Effect */
+.scan-lines::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.15),
+    rgba(0, 0, 0, 0.15) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  pointer-events: none;
+  z-index: 1000;
+  opacity: var(--scanline-opacity);
+}
+
+/* Main Quest Badge */
+.badge-main {
+  @apply bg-hud-primary/20 text-hud-primary border border-hud-primary/50;
+}
+
+/* Side Quest Badge */
+.badge-side {
+  @apply bg-muted text-muted-foreground border border-border;
+}
+
+/* Darkness Overlay for Anti-Vision */
+.darkness-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--darkness-color);
+  pointer-events: none;
+  z-index: 50;
+  transition: opacity 0.5s ease;
+}

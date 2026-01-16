@@ -114,11 +114,72 @@ export default function BuildsPage() {
     let startPosition = existingQuests?.[0]?.position ?? -1;
     startPosition += 1;
 
-    let currentStart = new Date();
+    // Separate fixed and flexible tasks
+    const fixedTasks = build.templates
+      .filter((t) => t.scheduled_start)
+      .sort((a, b) => (a.scheduled_start || "").localeCompare(b.scheduled_start || ""));
+    const flexibleTasks = build.templates.filter((t) => !t.scheduled_start);
 
-    for (let i = 0; i < build.templates.length; i++) {
-      const template = build.templates[i];
-      const plannedEnd = new Date(currentStart.getTime() + template.duration_minutes * 60000);
+    // Helper to create date from time string (e.g., "12:00")
+    const timeToDate = (timeStr: string): Date => {
+      const [hours, minutes] = timeStr.split(":").map(Number);
+      const date = new Date();
+      date.setHours(hours, minutes, 0, 0);
+      return date;
+    };
+
+    // Build scheduled quest list: fixed tasks at their times, flexible fill gaps
+    interface ScheduledQuest {
+      template: BuildQuestTemplate;
+      plannedStart: Date;
+      plannedEnd: Date;
+    }
+    const scheduledQuests: ScheduledQuest[] = [];
+
+    // Place fixed tasks first
+    for (const template of fixedTasks) {
+      const plannedStart = timeToDate(template.scheduled_start!);
+      const plannedEnd = new Date(plannedStart.getTime() + template.duration_minutes * 60000);
+      scheduledQuests.push({ template, plannedStart, plannedEnd });
+    }
+
+    // Fill gaps with flexible tasks
+    let flexIndex = 0;
+    let currentTime = new Date(); // Start from now
+
+    // Sort scheduled by start time
+    scheduledQuests.sort((a, b) => a.plannedStart.getTime() - b.plannedStart.getTime());
+
+    // Insert flexible tasks in gaps before and between fixed tasks
+    const finalSchedule: ScheduledQuest[] = [];
+
+    for (const fixed of scheduledQuests) {
+      // Fill gap before this fixed task with flexible tasks
+      while (flexIndex < flexibleTasks.length && currentTime.getTime() + flexibleTasks[flexIndex].duration_minutes * 60000 <= fixed.plannedStart.getTime()) {
+        const flex = flexibleTasks[flexIndex];
+        const flexEnd = new Date(currentTime.getTime() + flex.duration_minutes * 60000);
+        finalSchedule.push({ template: flex, plannedStart: new Date(currentTime), plannedEnd: flexEnd });
+        currentTime = flexEnd;
+        flexIndex++;
+      }
+
+      // Add the fixed task
+      finalSchedule.push(fixed);
+      currentTime = fixed.plannedEnd;
+    }
+
+    // Add remaining flexible tasks after all fixed tasks
+    while (flexIndex < flexibleTasks.length) {
+      const flex = flexibleTasks[flexIndex];
+      const flexEnd = new Date(currentTime.getTime() + flex.duration_minutes * 60000);
+      finalSchedule.push({ template: flex, plannedStart: new Date(currentTime), plannedEnd: flexEnd });
+      currentTime = flexEnd;
+      flexIndex++;
+    }
+
+    // Insert all quests
+    for (let i = 0; i < finalSchedule.length; i++) {
+      const { template, plannedStart, plannedEnd } = finalSchedule[i];
 
       const { data: quest, error: questError } = await supabase
         .from("quests")
@@ -129,7 +190,7 @@ export default function BuildsPage() {
           description: template.description,
           quest_type: template.quest_type,
           duration_minutes: template.duration_minutes,
-          planned_start: currentStart.toISOString(),
+          planned_start: plannedStart.toISOString(),
           planned_end: plannedEnd.toISOString(),
           position: startPosition + i,
           status: "pending",
@@ -154,8 +215,6 @@ export default function BuildsPage() {
           }))
         );
       }
-
-      currentStart = plannedEnd;
     }
 
     // Refresh the store's day data before navigating
@@ -280,6 +339,11 @@ export default function BuildsPage() {
                       {t.quest_type === "main" ? "M" : "S"}
                     </span>
                     <span className="flex-1 truncate">{t.title}</span>
+                    {t.scheduled_start ? (
+                      <span className="text-hud-primary">{t.scheduled_start}</span>
+                    ) : (
+                      <span className="text-muted-foreground/50">flex</span>
+                    )}
                     <span>{formatDuration(t.duration_minutes)}</span>
                   </div>
                 ))}
@@ -344,6 +408,7 @@ function BuildEditor({
         duration_minutes: 30,
         attribute_ids: [],
         position: templates.length,
+        scheduled_start: null,
       },
     ]);
   };
@@ -392,6 +457,7 @@ function BuildEditor({
             duration_minutes: t.duration_minutes,
             attribute_ids: t.attribute_ids || [],
             position: i,
+            scheduled_start: t.scheduled_start || null,
           }))
         );
       }
@@ -419,6 +485,7 @@ function BuildEditor({
             duration_minutes: t.duration_minutes,
             attribute_ids: t.attribute_ids || [],
             position: i,
+            scheduled_start: t.scheduled_start || null,
           }))
         );
       }
@@ -528,38 +595,64 @@ function BuildEditor({
             </div>
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {templates.map((t, i) => (
-                <div key={i} className="flex gap-2 items-center p-2 bg-background rounded border border-border">
-                  <select
-                    value={t.quest_type}
-                    onChange={(e) => updateTemplate(i, { quest_type: e.target.value as "main" | "side" })}
-                    className="bg-transparent text-xs border-none focus:outline-none"
-                  >
-                    <option value="main">Main</option>
-                    <option value="side">Side</option>
-                  </select>
-                  <input
-                    type="text"
-                    value={t.title}
-                    onChange={(e) => updateTemplate(i, { title: e.target.value })}
-                    placeholder="Quest title"
-                    className="flex-1 bg-transparent text-sm focus:outline-none"
-                  />
-                  <select
-                    value={t.duration_minutes}
-                    onChange={(e) => updateTemplate(i, { duration_minutes: parseInt(e.target.value) })}
-                    className="bg-transparent text-xs border-none focus:outline-none"
-                  >
-                    {DURATION_PRESETS.map((d) => (
-                      <option key={d} value={d}>{formatDuration(d)}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => removeTemplate(i)}
-                    className="text-hud-danger/70 hover:text-hud-danger text-xs"
-                  >
-                    X
-                  </button>
+                <div key={i} className="p-2 bg-background rounded border border-border space-y-2">
+                  <div className="flex gap-2 items-center">
+                    <select
+                      value={t.quest_type}
+                      onChange={(e) => updateTemplate(i, { quest_type: e.target.value as "main" | "side" })}
+                      className="bg-transparent text-xs border-none focus:outline-none"
+                    >
+                      <option value="main">Main</option>
+                      <option value="side">Side</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={t.title}
+                      onChange={(e) => updateTemplate(i, { title: e.target.value })}
+                      placeholder="Quest title"
+                      className="flex-1 bg-transparent text-sm focus:outline-none"
+                    />
+                    <select
+                      value={t.duration_minutes}
+                      onChange={(e) => updateTemplate(i, { duration_minutes: parseInt(e.target.value) })}
+                      className="bg-transparent text-xs border-none focus:outline-none"
+                    >
+                      {DURATION_PRESETS.map((d) => (
+                        <option key={d} value={d}>{formatDuration(d)}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => removeTemplate(i)}
+                      className="text-hud-danger/70 hover:text-hud-danger text-xs"
+                    >
+                      X
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => updateTemplate(i, { scheduled_start: t.scheduled_start ? null : "09:00" })}
+                      className={`px-2 py-1 rounded border ${
+                        t.scheduled_start
+                          ? "border-hud-primary bg-hud-primary/10 text-hud-primary"
+                          : "border-border text-muted-foreground"
+                      }`}
+                    >
+                      {t.scheduled_start ? "Fixed" : "Flexible"}
+                    </button>
+                    {t.scheduled_start && (
+                      <input
+                        type="time"
+                        value={t.scheduled_start}
+                        onChange={(e) => updateTemplate(i, { scheduled_start: e.target.value })}
+                        className="bg-transparent text-sm focus:outline-none border border-border rounded px-2 py-1"
+                      />
+                    )}
+                    {!t.scheduled_start && (
+                      <span className="text-muted-foreground/50">fills gaps between fixed tasks</span>
+                    )}
+                  </div>
                 </div>
               ))}
               {templates.length === 0 && (

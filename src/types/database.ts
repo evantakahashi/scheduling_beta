@@ -74,6 +74,7 @@ export interface BuildQuestTemplate {
   duration_minutes: number;
   attribute_ids: AttributeId[];
   position: number;
+  scheduled_start: string | null; // "HH:MM" for fixed time, null for flexible
 }
 
 export interface BossReward {

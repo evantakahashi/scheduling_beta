@@ -76,6 +76,30 @@ export interface BuildQuestTemplate {
   position: number;
 }
 
+export interface BossReward {
+  id: string;
+  boss_id: string;
+  user_id: string;
+  title: string;
+  description: string | null;
+  icon: string;
+  estimated_cost: number | null;
+  is_claimed: boolean;
+  claimed_at: string | null;
+  created_at: string;
+}
+
+export interface RewardHistory {
+  id: string;
+  user_id: string;
+  reward_id: string;
+  boss_title: string;
+  reward_title: string;
+  reward_icon: string;
+  earned_at: string;
+  claimed_at: string | null;
+}
+
 export interface Profile {
   id: string;
   display_name: string;
@@ -122,6 +146,8 @@ export interface Boss {
   status: BossStatus;
   defeated_at: string | null;
   xp_reward: number;
+  estimated_hours: number | null;
+  proof_image_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -161,6 +187,7 @@ export interface Quest {
   earned_xp: number;
   accuracy: number | null;
   boss_damage: number;
+  is_endurance: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -62,22 +62,37 @@ export function calculateQuestXP(
   // Accuracy ratio: 1.0 = perfect, >1 = overtime, <1 = under
   const ratio = actualMs / plannedMs;
 
-  // Calculate accuracy percentage (100% = perfect)
-  const accuracy = ratio <= 1 ? Math.min(120, (1 / ratio) * 100) : (1 / ratio) * 100;
-
+  let accuracy: number;
   let multiplier: number;
 
-  if (ratio <= 1) {
-    // Finished early or on time: bonus (capped at 1.2x)
-    multiplier = Math.min(1.2, 1 + (1 - ratio) * 0.5);
-  } else {
-    // Finished late: penalty (only if difficulty allows)
-    if (config.penalizeOvertime) {
-      // 2x time = 0.5 multiplier, 3x time = 0 multiplier
-      multiplier = Math.max(0, 1 - (ratio - 1) * 0.5);
-    } else {
-      // Story mode: no penalty, just cap at 1.0
+  if (quest.is_endurance) {
+    // ENDURANCE QUEST: Reward meeting/exceeding minimum time
+    if (ratio >= 1) {
+      // Met or exceeded minimum duration - full credit
+      accuracy = 100;
       multiplier = 1.0;
+    } else {
+      // Finished early - penalty for not meeting minimum
+      accuracy = ratio * 100;
+      multiplier = Math.max(0, ratio); // 50% time = 50% XP
+    }
+  } else {
+    // STANDARD QUEST: Reward efficiency
+    // Calculate accuracy percentage (100% = perfect)
+    accuracy = ratio <= 1 ? Math.min(120, (1 / ratio) * 100) : (1 / ratio) * 100;
+
+    if (ratio <= 1) {
+      // Finished early or on time: bonus (capped at 1.2x)
+      multiplier = Math.min(1.2, 1 + (1 - ratio) * 0.5);
+    } else {
+      // Finished late: penalty (only if difficulty allows)
+      if (config.penalizeOvertime) {
+        // 2x time = 0.5 multiplier, 3x time = 0 multiplier
+        multiplier = Math.max(0, 1 - (ratio - 1) * 0.5);
+      } else {
+        // Story mode: no penalty, just cap at 1.0
+        multiplier = 1.0;
+      }
     }
   }
 

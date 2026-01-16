@@ -21,7 +21,7 @@ const DURATION_PRESETS = [
 ];
 
 export function AddQuestModal({ isOpen, onClose }: AddQuestModalProps) {
-  const { addQuest, currentDay, quests } = useGameStore();
+  const { addQuest, currentDay, quests, activeBoss } = useGameStore();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -29,6 +29,8 @@ export function AddQuestModal({ isOpen, onClose }: AddQuestModalProps) {
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [customDuration, setCustomDuration] = useState("");
   const [selectedAttributes, setSelectedAttributes] = useState<AttributeId[]>([]);
+  const [linkToBoss, setLinkToBoss] = useState(false);
+  const [isEndurance, setIsEndurance] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const toggleAttribute = (attrId: AttributeId) => {
@@ -80,6 +82,8 @@ export function AddQuestModal({ isOpen, onClose }: AddQuestModalProps) {
       plannedEnd,
       base_xp: questType === "main" ? 20 : 10,
       attribute_ids: selectedAttributes,
+      boss_id: linkToBoss && activeBoss ? activeBoss.id : null,
+      is_endurance: isEndurance,
     });
 
     // Reset form
@@ -89,6 +93,8 @@ export function AddQuestModal({ isOpen, onClose }: AddQuestModalProps) {
     setDurationMinutes(30);
     setCustomDuration("");
     setSelectedAttributes([]);
+    setLinkToBoss(false);
+    setIsEndurance(false);
     setIsSubmitting(false);
     onClose();
   };
@@ -203,6 +209,50 @@ export function AddQuestModal({ isOpen, onClose }: AddQuestModalProps) {
                   </p>
                 </div>
 
+                {/* Link to Boss (only for main quests when boss exists) */}
+                {questType === "main" && activeBoss && (
+                  <div>
+                    <label className="block text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                      Link to Boss
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setLinkToBoss(!linkToBoss)}
+                      className={`w-full py-3 px-4 rounded-lg border text-left transition-all ${
+                        linkToBoss
+                          ? "bg-hud-danger/20 border-hud-danger"
+                          : "bg-card border-border hover:border-hud-danger/50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="text-lg">👹</span>
+                          <div>
+                            <p className={`text-sm ${linkToBoss ? "text-hud-danger" : "text-foreground"}`}>
+                              {activeBoss.title}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {activeBoss.current_hp}/{activeBoss.total_hp} HP
+                            </p>
+                          </div>
+                        </div>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                          linkToBoss ? "border-hud-danger bg-hud-danger" : "border-muted-foreground"
+                        }`}>
+                          {linkToBoss && (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-background">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                    <p className="text-xs text-muted-foreground/70 mt-2">
+                      Linked quests deal damage to the boss when completed
+                    </p>
+                  </div>
+                )}
+
                 {/* Duration */}
                 <div>
                   <label className="block text-xs text-muted-foreground uppercase tracking-wider mb-2">
@@ -236,6 +286,42 @@ export function AddQuestModal({ isOpen, onClose }: AddQuestModalProps) {
                     />
                     <span className="text-sm text-muted-foreground">minutes</span>
                   </div>
+                </div>
+
+                {/* Endurance Mode Toggle */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setIsEndurance(!isEndurance)}
+                    className={`w-full py-3 px-4 rounded-lg border text-left transition-all ${
+                      isEndurance
+                        ? "bg-hud-success/20 border-hud-success"
+                        : "bg-card border-border hover:border-hud-success/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg">⏱️</span>
+                        <div>
+                          <p className={`text-sm ${isEndurance ? "text-hud-success" : "text-foreground"}`}>
+                            Endurance Mode
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {isEndurance ? "Rewarded for meeting minimum time" : "Rewarded for finishing efficiently"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                        isEndurance ? "border-hud-success bg-hud-success" : "border-muted-foreground"
+                      }`}>
+                        {isEndurance && (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-background">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                  </button>
                 </div>
 
                 {/* Attributes */}

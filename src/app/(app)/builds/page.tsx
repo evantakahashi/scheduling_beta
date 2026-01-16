@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useGameStore } from "@/store/game-store";
 import type { ScheduleBuild, BuildQuestTemplate, AttributeId } from "@/types/database";
 import { ATTRIBUTES } from "@/lib/attributes";
-import { formatDuration } from "@/lib/utils";
+import { formatDuration, getTodayDateString } from "@/lib/utils";
 
 interface BuildWithTemplates extends ScheduleBuild {
   templates: BuildQuestTemplate[];
@@ -18,7 +18,7 @@ const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function BuildsPage() {
   const router = useRouter();
-  const { profile, currentDay } = useGameStore();
+  const { profile, loadDay } = useGameStore();
   const [builds, setBuilds] = useState<BuildWithTemplates[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingBuild, setEditingBuild] = useState<BuildWithTemplates | null>(null);
@@ -64,18 +64,66 @@ export default function BuildsPage() {
   };
 
   const handleApplyBuild = async (build: BuildWithTemplates) => {
-    if (!currentDay || !profile) return;
+    if (!profile) return;
+    if (build.templates.length === 0) {
+      router.push("/today");
+      return;
+    }
 
     const supabase = createClient();
+
+    // Get or create today's day record
+    const today = getTodayDateString();
+    let dayId: string;
+
+    const { data: existingDay, error: dayError } = await supabase
+      .from("days")
+      .select("id")
+      .eq("user_id", profile.id)
+      .eq("date", today)
+      .single();
+
+    if (existingDay) {
+      dayId = existingDay.id;
+    } else if (dayError?.code === "PGRST116") {
+      // No day exists, create one
+      const { data: newDay, error: createDayError } = await supabase
+        .from("days")
+        .insert({ user_id: profile.id, date: today })
+        .select("id")
+        .single();
+
+      if (createDayError || !newDay) {
+        console.error("Failed to create day:", createDayError);
+        return;
+      }
+      dayId = newDay.id;
+    } else {
+      console.error("Failed to fetch day:", dayError);
+      return;
+    }
+
+    // Get max position of existing quests to append after them
+    const { data: existingQuests } = await supabase
+      .from("quests")
+      .select("position")
+      .eq("day_id", dayId)
+      .order("position", { ascending: false })
+      .limit(1);
+
+    let startPosition = existingQuests?.[0]?.position ?? -1;
+    startPosition += 1;
+
     let currentStart = new Date();
 
-    for (const template of build.templates) {
+    for (let i = 0; i < build.templates.length; i++) {
+      const template = build.templates[i];
       const plannedEnd = new Date(currentStart.getTime() + template.duration_minutes * 60000);
 
-      const { data: quest } = await supabase
+      const { data: quest, error: questError } = await supabase
         .from("quests")
         .insert({
-          day_id: currentDay.id,
+          day_id: dayId,
           user_id: profile.id,
           title: template.title,
           description: template.description,
@@ -83,7 +131,7 @@ export default function BuildsPage() {
           duration_minutes: template.duration_minutes,
           planned_start: currentStart.toISOString(),
           planned_end: plannedEnd.toISOString(),
-          position: template.position,
+          position: startPosition + i,
           status: "pending",
           base_xp: template.quest_type === "main" ? 20 : 10,
           earned_xp: 0,
@@ -91,6 +139,11 @@ export default function BuildsPage() {
         })
         .select()
         .single();
+
+      if (questError) {
+        console.error("Failed to create quest:", questError);
+        continue;
+      }
 
       // Insert attribute tags
       if (quest && template.attribute_ids?.length > 0) {
@@ -105,6 +158,8 @@ export default function BuildsPage() {
       currentStart = plannedEnd;
     }
 
+    // Refresh the store's day data before navigating
+    await loadDay(today);
     router.push("/today");
   };
 

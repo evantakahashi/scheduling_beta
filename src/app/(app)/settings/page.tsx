@@ -279,6 +279,33 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* Boss Fights */}
+      <section className="mt-10 space-y-4">
+        <h2 className="font-hud text-sm text-muted-foreground uppercase tracking-wider">
+          Boss Fights
+        </h2>
+
+        <button
+          onClick={() => router.push("/boss")}
+          className="w-full border border-hud-danger/30 rounded-lg p-4 bg-card/30 hover:bg-card/50 transition-colors text-left"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">👹</span>
+              <div>
+                <h3 className="text-sm text-foreground font-medium">Boss Fights</h3>
+                <p className="text-xs text-muted-foreground">
+                  Monthly projects with HP and loot rewards
+                </p>
+              </div>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </div>
+        </button>
+      </section>
+
       {/* Schedule Builds */}
       <section className="mt-10 space-y-4">
         <h2 className="font-hud text-sm text-muted-foreground uppercase tracking-wider">
@@ -296,6 +323,33 @@ export default function SettingsPage() {
                 <h3 className="text-sm text-foreground font-medium">My Builds</h3>
                 <p className="text-xs text-muted-foreground">
                   Create and manage schedule templates
+                </p>
+              </div>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </div>
+        </button>
+      </section>
+
+      {/* Rewards */}
+      <section className="mt-10 space-y-4">
+        <h2 className="font-hud text-sm text-muted-foreground uppercase tracking-wider">
+          Rewards
+        </h2>
+
+        <button
+          onClick={() => router.push("/rewards")}
+          className="w-full border border-hud-warning/30 rounded-lg p-4 bg-card/30 hover:bg-card/50 transition-colors text-left"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🎁</span>
+              <div>
+                <h3 className="text-sm text-foreground font-medium">My Rewards</h3>
+                <p className="text-xs text-muted-foreground">
+                  View earned loot and claim rewards
                 </p>
               </div>
             </div>

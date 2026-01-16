@@ -1,4 +1,4 @@
-import type { Quest, Day, Boss, Profile, AttributeId, UserAttribute, ClassId } from "@/types/database";
+import type { Quest, Day, Boss, Profile, AttributeId, UserAttribute, ClassId, BossReward } from "@/types/database";
 
 // Local state versions with Date objects instead of strings
 export interface LocalQuest extends Omit<Quest, "planned_start" | "planned_end" | "actual_start" | "actual_end" | "created_at" | "updated_at"> {
@@ -49,6 +49,10 @@ export interface GameState {
 
   // Hardcore mode
   isGameOver: boolean;
+
+  // Loot system
+  droppedLoot: BossReward | null;
+  defeatedBossTitle: string | null;
 }
 
 // Input type for adding a new quest (only user-provided fields)
@@ -62,6 +66,7 @@ export interface AddQuestInput {
   base_xp: number;
   boss_id?: string | null;
   attribute_ids?: AttributeId[];
+  is_endurance?: boolean;
 }
 
 export interface GameActions {
@@ -74,13 +79,13 @@ export interface GameActions {
   // Quest actions
   addQuest: (quest: AddQuestInput) => Promise<void>;
   updateQuest: (questId: string, updates: Partial<LocalQuest>) => void;
-  deleteQuest: (questId: string) => void;
+  deleteQuest: (questId: string) => Promise<void>;
   reorderQuests: (activeId: string, overId: string) => void;
 
   // Core game actions
-  startQuest: (questId: string) => void;
-  completeQuest: (questId: string) => void;
-  skipQuest: (questId: string) => void;
+  startQuest: (questId: string) => Promise<void>;
+  completeQuest: (questId: string) => Promise<void>;
+  skipQuest: (questId: string) => Promise<void>;
 
   // Engine functions
   recalculateSchedule: () => void;
@@ -92,6 +97,13 @@ export interface GameActions {
 
   // Hardcore mode
   dismissGameOver: () => Promise<void>;
+
+  // Loot system
+  claimLoot: () => Promise<void>;
+  dismissLoot: () => void;
+
+  // Boss defeat
+  defeatBoss: (bossId: string, proofImageUrl: string) => Promise<void>;
 }
 
 export type GameStore = GameState & GameActions;

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createClient } from "@/lib/supabase/client";
 import type { GameStore, LocalQuest, LocalDay, SacrificeResult } from "./types";
-import type { Quest, Day, Profile, Boss, UserAttribute, AttributeId } from "@/types/database";
+import type { Quest, Day, Profile, Boss, UserAttribute, AttributeId, BossReward } from "@/types/database";
 import {
   executeSacrifice as runSacrifice,
   recalculateScheduleTimes,
@@ -49,6 +49,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   recentSacrifices: [],
   recentDamage: 0,
   isGameOver: false,
+  droppedLoot: null,
+  defeatedBossTitle: null,
 
   // Load user profile
   loadProfile: async () => {
@@ -261,6 +263,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       earned_xp: 0,
       accuracy: null,
       boss_damage: 0,
+      is_endurance: questInput.is_endurance || false,
     };
 
     const { data } = await supabase
@@ -303,7 +306,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   // Delete a quest
-  deleteQuest: (questId) => {
+  deleteQuest: async (questId) => {
     const { quests, currentDay } = get();
     const filtered = quests.filter((q) => q.id !== questId);
 
@@ -322,7 +325,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     // Sync deletion to Supabase
     const supabase = createClient();
-    supabase.from("quests").delete().eq("id", questId);
+    const { error } = await supabase.from("quests").delete().eq("id", questId);
+
+    if (error) console.error("Failed to delete quest:", error);
   },
 
   // Reorder quests (drag and drop)
@@ -360,7 +365,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   // Start a quest
-  startQuest: (questId) => {
+  startQuest: async (questId) => {
     const { quests, currentDay, profile } = get();
     if (!currentDay || !profile) return;
 
@@ -427,17 +432,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     // Sync to Supabase
     const supabase = createClient();
-    supabase
+    const { error } = await supabase
       .from("quests")
       .update({
         status: "active",
         actual_start: now.toISOString(),
       } as Record<string, unknown>)
       .eq("id", questId);
+
+    if (error) console.error("Failed to start quest:", error);
   },
 
   // Complete a quest
-  completeQuest: (questId) => {
+  completeQuest: async (questId) => {
     const { quests, currentDay, activeBoss, profile } = get();
     if (!currentDay || !profile) return;
 
@@ -483,6 +490,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Update boss HP if applicable
     if (activeBoss && bossDamage > 0) {
       const newHp = Math.max(0, activeBoss.current_hp - bossDamage);
+      const wasDefeated = newHp <= 0 && activeBoss.current_hp > 0;
+
       set({
         activeBoss: { ...activeBoss, current_hp: newHp },
         recentDamage: bossDamage,
@@ -490,7 +499,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       // Sync boss damage
       const supabase = createClient();
-      supabase
+      await supabase
         .from("bosses")
         .update({
           current_hp: newHp,
@@ -498,6 +507,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
           defeated_at: newHp <= 0 ? now.toISOString() : null,
         } as Record<string, unknown>)
         .eq("id", activeBoss.id);
+
+      // Boss defeated - trigger loot drop!
+      if (wasDefeated) {
+        // Get available rewards for this boss
+        const { data: rewards } = await supabase
+          .from("boss_rewards")
+          .select("*")
+          .eq("boss_id", activeBoss.id)
+          .eq("is_claimed", false);
+
+        if (rewards && rewards.length > 0) {
+          // Randomly select one reward to drop
+          const droppedReward = rewards[Math.floor(Math.random() * rewards.length)];
+
+          // Record in history
+          await supabase.from("reward_history").insert({
+            user_id: profile.id,
+            reward_id: droppedReward.id,
+            boss_title: activeBoss.title,
+            reward_title: droppedReward.title,
+            reward_icon: droppedReward.icon,
+          });
+
+          set({
+            droppedLoot: droppedReward,
+            defeatedBossTitle: activeBoss.title,
+            activeBoss: null,
+          });
+        } else {
+          set({ activeBoss: null });
+        }
+      }
     }
 
     // Update profile XP
@@ -573,7 +614,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     // Sync to Supabase
     const supabase = createClient();
-    supabase
+    const { error: questError } = await supabase
       .from("quests")
       .update({
         status: "completed",
@@ -584,14 +625,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
       } as Record<string, unknown>)
       .eq("id", questId);
 
-    supabase
+    if (questError) console.error("Failed to complete quest:", questError);
+
+    const { error: profileError } = await supabase
       .from("profiles")
       .update({ total_xp: profile.total_xp + xpResult.earnedXp } as Record<string, unknown>)
       .eq("id", profile.id);
+
+    if (profileError) console.error("Failed to update profile XP:", profileError);
   },
 
   // Skip a quest
-  skipQuest: (questId) => {
+  skipQuest: async (questId) => {
     const { quests, currentDay, profile } = get();
     if (!currentDay || !profile) return;
 
@@ -645,10 +690,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     // Sync to Supabase
     const supabase = createClient();
-    supabase
+    const { error } = await supabase
       .from("quests")
       .update({ status: "sacrificed" } as Record<string, unknown>)
       .eq("id", questId);
+
+    if (error) console.error("Failed to skip quest:", error);
   },
 
   // Recalculate entire schedule
@@ -751,5 +798,94 @@ export const useGameStore = create<GameStore>((set, get) => ({
       isGameOver: false,
       profile: { ...profile, current_streak: 0 },
     });
+  },
+
+  // Claim dropped loot
+  claimLoot: async () => {
+    const { droppedLoot, profile } = get();
+    if (!droppedLoot || !profile) return;
+
+    const supabase = createClient();
+    const now = new Date().toISOString();
+
+    // Mark reward as claimed
+    await supabase
+      .from("boss_rewards")
+      .update({ is_claimed: true, claimed_at: now })
+      .eq("id", droppedLoot.id);
+
+    // Update history
+    await supabase
+      .from("reward_history")
+      .update({ claimed_at: now })
+      .eq("reward_id", droppedLoot.id);
+
+    set({ droppedLoot: null, defeatedBossTitle: null });
+  },
+
+  // Dismiss loot without claiming
+  dismissLoot: () => {
+    set({ droppedLoot: null, defeatedBossTitle: null });
+  },
+
+  // Manually defeat boss with proof
+  defeatBoss: async (bossId, proofImageUrl) => {
+    const { profile, activeBoss } = get();
+    if (!profile) return;
+
+    const supabase = createClient();
+    const now = new Date().toISOString();
+
+    // Update boss status to defeated with proof
+    await supabase
+      .from("bosses")
+      .update({
+        status: "defeated",
+        current_hp: 0,
+        defeated_at: now,
+        proof_image_url: proofImageUrl,
+      } as Record<string, unknown>)
+      .eq("id", bossId);
+
+    // Get boss details for loot drop
+    const { data: boss } = await supabase
+      .from("bosses")
+      .select("*")
+      .eq("id", bossId)
+      .single();
+
+    if (!boss) {
+      set({ activeBoss: null });
+      return;
+    }
+
+    // Get available rewards for this boss
+    const { data: rewards } = await supabase
+      .from("boss_rewards")
+      .select("*")
+      .eq("boss_id", bossId)
+      .eq("is_claimed", false);
+
+    if (rewards && rewards.length > 0) {
+      // Randomly select one reward to drop
+      const droppedReward = rewards[Math.floor(Math.random() * rewards.length)] as BossReward;
+
+      // Record in history
+      await supabase.from("reward_history").insert({
+        user_id: profile.id,
+        reward_id: droppedReward.id,
+        boss_title: boss.title,
+        reward_title: droppedReward.title,
+        reward_icon: droppedReward.icon,
+      });
+
+      set({
+        droppedLoot: droppedReward,
+        defeatedBossTitle: boss.title,
+        activeBoss: activeBoss?.id === bossId ? null : activeBoss,
+      });
+    } else {
+      set({ activeBoss: activeBoss?.id === bossId ? null : activeBoss });
+    }
   },
 }));

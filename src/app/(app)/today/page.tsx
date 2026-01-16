@@ -12,6 +12,7 @@ import { SacrificeAnimationContainer } from "@/components/effects/sacrifice-anim
 import { DarknessOverlay } from "@/components/hud/darkness-overlay";
 import { StreakDisplay } from "@/components/effects/streak-fire";
 import { GameOverScreen } from "@/components/effects/game-over-screen";
+import { LootDropModal } from "@/components/effects/loot-drop-modal";
 
 export default function TodayPage() {
   const router = useRouter();
@@ -26,12 +27,16 @@ export default function TodayPage() {
     recentDamage,
     recentSacrifices,
     isGameOver,
+    droppedLoot,
+    defeatedBossTitle,
     loadDay,
     loadActiveBoss,
     startQuest,
     completeQuest,
     skipQuest,
     dismissGameOver,
+    claimLoot,
+    dismissLoot,
   } = useGameStore();
 
   useEffect(() => {
@@ -59,6 +64,15 @@ export default function TodayPage() {
         isVisible={isGameOver}
         antiVision={profile?.anti_vision}
         onContinue={dismissGameOver}
+      />
+
+      {/* Loot Drop Modal */}
+      <LootDropModal
+        isOpen={!!droppedLoot}
+        bossTitle={defeatedBossTitle}
+        reward={droppedLoot}
+        onClaim={claimLoot}
+        onDismiss={dismissLoot}
       />
 
       {/* Enhanced Darkness Overlay */}

@@ -70,6 +70,12 @@ export default {
       animation: {
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
         "scan-line": "scan-line 8s linear infinite",
+        "damage-flash": "damage-flash 0.3s ease-out",
+        "float-up": "float-up 1.5s ease-out forwards",
+        "slide-out-right": "slide-out-right 0.5s ease-out forwards",
+        "fire-flicker": "fire-flicker 0.5s ease-in-out infinite",
+        "glitch": "glitch 0.3s ease-in-out",
+        "darkness-pulse": "darkness-pulse 3s ease-in-out infinite",
       },
       keyframes: {
         "pulse-glow": {
@@ -79,6 +85,34 @@ export default {
         "scan-line": {
           "0%": { transform: "translateY(-100%)" },
           "100%": { transform: "translateY(100vh)" },
+        },
+        "damage-flash": {
+          "0%": { backgroundColor: "rgba(255, 0, 68, 0.8)" },
+          "100%": { backgroundColor: "transparent" },
+        },
+        "float-up": {
+          "0%": { opacity: "1", transform: "translateY(0)" },
+          "100%": { opacity: "0", transform: "translateY(-40px)" },
+        },
+        "slide-out-right": {
+          "0%": { opacity: "1", transform: "translateX(0)" },
+          "100%": { opacity: "0", transform: "translateX(100px)" },
+        },
+        "fire-flicker": {
+          "0%, 100%": { textShadow: "0 0 4px #ff6600, 0 0 8px #ff3300" },
+          "50%": { textShadow: "0 0 8px #ff6600, 0 0 16px #ff3300, 0 0 24px #ff0000" },
+        },
+        "glitch": {
+          "0%": { transform: "translate(0)" },
+          "20%": { transform: "translate(-2px, 2px)" },
+          "40%": { transform: "translate(-2px, -2px)" },
+          "60%": { transform: "translate(2px, 2px)" },
+          "80%": { transform: "translate(2px, -2px)" },
+          "100%": { transform: "translate(0)" },
+        },
+        "darkness-pulse": {
+          "0%, 100%": { opacity: "var(--darkness-base)" },
+          "50%": { opacity: "var(--darkness-peak)" },
         },
       },
     },

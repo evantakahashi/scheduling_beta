@@ -1,4 +1,4 @@
-import type { Quest, Day, Boss, Profile } from "@/types/database";
+import type { Quest, Day, Boss, Profile, AttributeId, UserAttribute, ClassId } from "@/types/database";
 
 // Local state versions with Date objects instead of strings
 export interface LocalQuest extends Omit<Quest, "planned_start" | "planned_end" | "actual_start" | "actual_end" | "created_at" | "updated_at"> {
@@ -6,6 +6,7 @@ export interface LocalQuest extends Omit<Quest, "planned_start" | "planned_end" 
   plannedEnd: Date;
   actualStart: Date | null;
   actualEnd: Date | null;
+  attribute_ids: AttributeId[]; // Linked attributes (max 2)
 }
 
 export interface LocalDay extends Omit<Day, "created_at" | "updated_at"> {
@@ -29,6 +30,7 @@ export interface GameState {
   // User data
   profile: Profile | null;
   isOnboarded: boolean;
+  userAttributes: UserAttribute[];
 
   // Current day data
   currentDay: LocalDay | null;
@@ -44,6 +46,22 @@ export interface GameState {
   isSyncing: boolean;
   recentSacrifices: LocalQuest[];
   recentDamage: number;
+
+  // Hardcore mode
+  isGameOver: boolean;
+}
+
+// Input type for adding a new quest (only user-provided fields)
+export interface AddQuestInput {
+  title: string;
+  description: string | null;
+  quest_type: "main" | "side";
+  duration_minutes: number;
+  plannedStart: Date;
+  plannedEnd: Date;
+  base_xp: number;
+  boss_id?: string | null;
+  attribute_ids?: AttributeId[];
 }
 
 export interface GameActions {
@@ -51,9 +69,10 @@ export interface GameActions {
   loadProfile: () => Promise<void>;
   loadDay: (date: string) => Promise<void>;
   loadActiveBoss: () => Promise<void>;
+  loadUserAttributes: () => Promise<void>;
 
   // Quest actions
-  addQuest: (quest: Omit<LocalQuest, "id" | "position" | "status" | "earnedXp" | "accuracy" | "bossDamage">) => Promise<void>;
+  addQuest: (quest: AddQuestInput) => Promise<void>;
   updateQuest: (questId: string, updates: Partial<LocalQuest>) => void;
   deleteQuest: (questId: string) => void;
   reorderQuests: (activeId: string, overId: string) => void;
@@ -69,7 +88,10 @@ export interface GameActions {
 
   // Profile actions
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
-  completeOnboarding: (vision: string, antiVision: string, mission: string) => Promise<void>;
+  completeOnboarding: (vision: string, antiVision: string, mission: string, classId?: ClassId) => Promise<void>;
+
+  // Hardcore mode
+  dismissGameOver: () => Promise<void>;
 }
 
 export type GameStore = GameState & GameActions;

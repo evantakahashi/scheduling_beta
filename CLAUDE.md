@@ -63,6 +63,32 @@ Five core tables with RLS policies scoped to `auth.uid()`:
 - `src/store/xp-calculator.ts` - XP formulas
 - `src/components/hud/` - Sci-Fi HUD frame components
 - `src/components/quest-log/` - Quest list and cards
+- `src/components/effects/` - Animations (XP popup, damage, sacrifice)
+
+## Retention Layer (Planned)
+
+Four modules to increase engagement:
+
+### Module 1: Difficulty Settings
+- Story Mode: No penalties, always maintain streak
+- Normal Mode: 80% completion for streak, standard XP
+- Hardcore Mode: 1.5x XP, any Main Quest fail = Game Over
+
+### Module 2: Attribute System
+- 6 attributes: STR, INT, CHA, FOC, VIT, CRE
+- Tag quests with attributes (up to 2)
+- XP splits among tagged attributes
+- Radar chart visualization on profile
+
+### Module 3: Character Classes
+- Pre-built archetypes: Founder, Scholar, Athlete, Monk, Creator
+- Custom "Builds" (schedule templates)
+- Apply builds to populate daily quests
+
+### Module 4: Loot System
+- Define rewards when creating a Boss
+- Loot drops on Boss defeat
+- Claim rewards (real-world permissions)
 
 ## UI Theme
 

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createClient } from "@/lib/supabase/client";
 import type { GameStore, LocalQuest, LocalDay, SacrificeResult } from "./types";
-import type { Quest, Day, Profile, Boss } from "@/types/database";
+import type { Quest, Day, Profile, Boss, UserAttribute, AttributeId } from "@/types/database";
 import {
   executeSacrifice as runSacrifice,
   recalculateScheduleTimes,
@@ -11,13 +11,14 @@ import {
 import { calculateQuestXP, calculateBossDamage } from "./xp-calculator";
 
 // Helper to convert DB Quest to LocalQuest
-function toLocalQuest(quest: Quest): LocalQuest {
+function toLocalQuest(quest: Quest, attributeIds: AttributeId[] = []): LocalQuest {
   return {
     ...quest,
     plannedStart: new Date(quest.planned_start),
     plannedEnd: new Date(quest.planned_end),
     actualStart: quest.actual_start ? new Date(quest.actual_start) : null,
     actualEnd: quest.actual_end ? new Date(quest.actual_end) : null,
+    attribute_ids: attributeIds,
   };
 }
 
@@ -37,6 +38,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // Initial state
   profile: null,
   isOnboarded: false,
+  userAttributes: [],
   currentDay: null,
   quests: [],
   activeBoss: null,
@@ -46,35 +48,69 @@ export const useGameStore = create<GameStore>((set, get) => ({
   isSyncing: false,
   recentSacrifices: [],
   recentDamage: 0,
+  isGameOver: false,
 
   // Load user profile
   loadProfile: async () => {
     set({ isLoading: true });
     const supabase = createClient();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      set({ isLoading: false });
-      return;
-    }
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single();
+      if (!user) {
+        set({ isLoading: false });
+        return;
+      }
 
-    if (data) {
-      const profile = data as unknown as Profile;
-      const isOnboarded = !!(
-        profile.vision &&
-        profile.anti_vision &&
-        profile.one_year_mission
-      );
-      set({ profile, isOnboarded, isLoading: false });
-    } else {
+      // Try to get existing profile
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+      if (data) {
+        const profile = data as unknown as Profile;
+        const isOnboarded = !!(
+          profile.vision &&
+          profile.anti_vision &&
+          profile.one_year_mission
+        );
+        set({ profile, isOnboarded, isLoading: false });
+      } else if (error?.code === "PGRST116") {
+        // Profile doesn't exist - create one
+        const newProfile = {
+          id: user.id,
+          display_name: user.user_metadata?.display_name || "Player",
+          vision: "",
+          anti_vision: "",
+          one_year_mission: "",
+          default_bedtime: "22:00",
+          default_wake_time: "07:00",
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        };
+
+        const { data: created } = await supabase
+          .from("profiles")
+          .insert(newProfile as Record<string, unknown>)
+          .select()
+          .single();
+
+        if (created) {
+          set({ profile: created as unknown as Profile, isOnboarded: false, isLoading: false });
+        } else {
+          console.error("Failed to create profile");
+          set({ isLoading: false });
+        }
+      } else {
+        console.error("Error loading profile:", error);
+        set({ isLoading: false });
+      }
+    } catch (err) {
+      console.error("loadProfile error:", err);
       set({ isLoading: false });
     }
   },
@@ -120,8 +156,25 @@ export const useGameStore = create<GameStore>((set, get) => ({
       .order("position");
 
     const quests = (questsData || []) as unknown as Quest[];
+
+    // Load quest attributes for all quests
+    const questIds = quests.map((q) => q.id);
+    const { data: questAttrsData } = await supabase
+      .from("quest_attributes")
+      .select("*")
+      .in("quest_id", questIds);
+
+    // Group attributes by quest_id
+    const attrsByQuestId = new Map<string, AttributeId[]>();
+    (questAttrsData || []).forEach((qa: { quest_id: string; attribute_id: AttributeId }) => {
+      const existing = attrsByQuestId.get(qa.quest_id) || [];
+      attrsByQuestId.set(qa.quest_id, [...existing, qa.attribute_id]);
+    });
+
     const localDay = toLocalDay(day, profile);
-    const localQuests = quests.map(toLocalQuest);
+    const localQuests = quests.map((q) =>
+      toLocalQuest(q, attrsByQuestId.get(q.id) || [])
+    );
 
     // Calculate derived values
     const freeTimeMinutes = calculateFreeTime(
@@ -134,7 +187,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const failedMain = localQuests.filter(
       (q) => q.status === "failed" && q.quest_type === "main"
     );
-    const darknessLevel = calculateDarknessLevel(completed, sacrificed, failedMain);
+    const darknessLevel = calculateDarknessLevel(
+      completed,
+      sacrificed,
+      failedMain,
+      profile.difficulty_mode
+    );
 
     set({
       currentDay: localDay,
@@ -161,6 +219,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
       .single();
 
     set({ activeBoss: (data as unknown as Boss) || null });
+  },
+
+  // Load user attributes
+  loadUserAttributes: async () => {
+    const { profile } = get();
+    if (!profile) return;
+
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("user_attributes")
+      .select("*")
+      .eq("user_id", profile.id);
+
+    set({ userAttributes: (data as unknown as UserAttribute[]) || [] });
   },
 
   // Add a new quest
@@ -198,7 +270,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
       .single();
 
     if (data) {
-      const localQuest = toLocalQuest(data as unknown as Quest);
+      const createdQuest = data as unknown as Quest;
+      const attributeIds = questInput.attribute_ids || [];
+
+      // Save quest attributes if any
+      if (attributeIds.length > 0) {
+        const attrInserts = attributeIds.map((attr_id) => ({
+          quest_id: createdQuest.id,
+          attribute_id: attr_id,
+        }));
+        await supabase.from("quest_attributes").insert(attrInserts);
+      }
+
+      const localQuest = toLocalQuest(createdQuest, attributeIds);
       set({ quests: [...quests, localQuest] });
 
       // Recalculate free time
@@ -277,8 +361,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // Start a quest
   startQuest: (questId) => {
-    const { quests, currentDay } = get();
-    if (!currentDay) return;
+    const { quests, currentDay, profile } = get();
+    if (!currentDay || !profile) return;
 
     const now = new Date();
     const questIndex = quests.findIndex((q) => q.id === questId);
@@ -328,7 +412,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const darknessLevel = calculateDarknessLevel(
         completed,
         sacrificed,
-        failedMain
+        failedMain,
+        profile.difficulty_mode
       );
       set({ darknessLevel });
     }
@@ -360,9 +445,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const quest = quests.find((q) => q.id === questId);
     if (!quest) return;
 
-    // Calculate XP and accuracy
+    // Calculate XP and accuracy (with difficulty multiplier)
     const questWithEnd = { ...quest, actualEnd: now };
-    const xpResult = calculateQuestXP(questWithEnd);
+    const xpResult = calculateQuestXP(questWithEnd, profile.difficulty_mode);
     const bossDamage = calculateBossDamage(questWithEnd, xpResult.accuracy);
 
     // Update quest
@@ -423,6 +508,50 @@ export const useGameStore = create<GameStore>((set, get) => ({
       },
     });
 
+    // Distribute XP to attributes
+    if (quest.attribute_ids.length > 0 && xpResult.earnedXp > 0) {
+      const xpPerAttribute = Math.floor(xpResult.earnedXp / quest.attribute_ids.length);
+      const { userAttributes } = get();
+
+      // Update local state
+      const updatedAttrs = [...userAttributes];
+      for (const attrId of quest.attribute_ids) {
+        const existing = updatedAttrs.find((a) => a.attribute_id === attrId);
+        if (existing) {
+          existing.total_xp += xpPerAttribute;
+        } else {
+          updatedAttrs.push({
+            user_id: profile.id,
+            attribute_id: attrId,
+            total_xp: xpPerAttribute,
+          });
+        }
+      }
+      set({ userAttributes: updatedAttrs });
+
+      // Sync to Supabase (upsert)
+      const supabase = createClient();
+      for (const attrId of quest.attribute_ids) {
+        supabase.rpc("increment_attribute_xp", {
+          p_user_id: profile.id,
+          p_attribute_id: attrId,
+          p_xp_amount: xpPerAttribute,
+        }).then(({ error }) => {
+          if (error) {
+            // Fallback: upsert directly
+            const attr = updatedAttrs.find((a) => a.attribute_id === attrId);
+            if (attr) {
+              supabase.from("user_attributes").upsert({
+                user_id: profile.id,
+                attribute_id: attrId,
+                total_xp: attr.total_xp,
+              });
+            }
+          }
+        });
+      }
+    }
+
     // Update darkness and free time
     const sacrificed = updatedQuests.filter((q) => q.status === "sacrificed");
     const completed = updatedQuests.filter((q) => q.status === "completed");
@@ -432,7 +561,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const darknessLevel = calculateDarknessLevel(
       completed,
       sacrificed,
-      failedMain
+      failedMain,
+      profile.difficulty_mode
     );
     const freeTimeMinutes = calculateFreeTime(
       updatedQuests,
@@ -462,8 +592,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // Skip a quest
   skipQuest: (questId) => {
-    const { quests, currentDay } = get();
-    if (!currentDay) return;
+    const { quests, currentDay, profile } = get();
+    if (!currentDay || !profile) return;
 
     const quest = quests.find((q) => q.id === questId);
     if (!quest) return;
@@ -498,7 +628,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const darknessLevel = calculateDarknessLevel(
       completed,
       sacrificed,
-      failedMain
+      failedMain,
+      profile.difficulty_mode
     );
     const freeTimeMinutes = calculateFreeTime(
       updatedQuests,
@@ -506,6 +637,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     );
 
     set({ darknessLevel, freeTimeMinutes });
+
+    // Hardcore mode: trigger game over if main quest is sacrificed
+    if (profile.difficulty_mode === "hardcore" && quest.quest_type === "main") {
+      set({ isGameOver: true });
+    }
 
     // Sync to Supabase
     const supabase = createClient();
@@ -555,12 +691,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!profile) return;
 
     const supabase = createClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
       .update(updates as Record<string, unknown>)
       .eq("id", profile.id)
       .select()
       .single();
+
+    if (error) {
+      console.error("Failed to update profile:", error);
+      return;
+    }
 
     if (data) {
       set({ profile: data as unknown as Profile });
@@ -568,18 +709,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   // Complete onboarding
-  completeOnboarding: async (vision, antiVision, mission) => {
+  completeOnboarding: async (vision, antiVision, mission, classId) => {
     const { profile } = get();
     if (!profile) return;
 
     const supabase = createClient();
+    const updates: Record<string, unknown> = {
+      vision,
+      anti_vision: antiVision,
+      one_year_mission: mission,
+    };
+    if (classId) {
+      updates.class_id = classId;
+    }
+
     const { data } = await supabase
       .from("profiles")
-      .update({
-        vision,
-        anti_vision: antiVision,
-        one_year_mission: mission,
-      } as Record<string, unknown>)
+      .update(updates)
       .eq("id", profile.id)
       .select()
       .single();
@@ -587,5 +733,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (data) {
       set({ profile: data as unknown as Profile, isOnboarded: true });
     }
+  },
+
+  // Dismiss game over screen (Hardcore mode)
+  dismissGameOver: async () => {
+    const { profile } = get();
+    if (!profile) return;
+
+    // Reset streak
+    const supabase = createClient();
+    await supabase
+      .from("profiles")
+      .update({ current_streak: 0 } as Record<string, unknown>)
+      .eq("id", profile.id);
+
+    set({
+      isGameOver: false,
+      profile: { ...profile, current_streak: 0 },
+    });
   },
 }));

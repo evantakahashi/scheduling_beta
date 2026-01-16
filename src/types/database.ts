@@ -6,6 +6,75 @@ export type QuestStatus =
   | "sacrificed"
   | "failed";
 export type BossStatus = "active" | "defeated" | "failed";
+export type DifficultyMode = "story" | "normal" | "hardcore";
+export type AttributeId = "str" | "int" | "cha" | "foc" | "vit" | "cre";
+
+export interface Attribute {
+  id: AttributeId;
+  name: string;
+  icon: string;
+  description: string;
+  color: string;
+}
+
+export interface QuestAttribute {
+  quest_id: string;
+  attribute_id: AttributeId;
+}
+
+export interface UserAttribute {
+  user_id: string;
+  attribute_id: AttributeId;
+  total_xp: number;
+}
+
+export type ClassId = "founder" | "scholar" | "athlete" | "monk" | "creator" | "custom";
+
+export interface CharacterClass {
+  id: ClassId;
+  name: string;
+  icon: string;
+  description: string;
+  default_wake_time: string;
+  default_bedtime: string;
+  primary_attributes: AttributeId[];
+}
+
+export interface ClassQuestTemplate {
+  id: string;
+  class_id: ClassId;
+  title: string;
+  description: string | null;
+  quest_type: QuestType;
+  duration_minutes: number;
+  attribute_ids: AttributeId[];
+  position: number;
+  is_default: boolean;
+}
+
+export interface ScheduleBuild {
+  id: string;
+  user_id: string;
+  name: string;
+  icon: string;
+  description: string | null;
+  wake_time: string | null;
+  bedtime: string | null;
+  default_days: number[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BuildQuestTemplate {
+  id: string;
+  build_id: string;
+  title: string;
+  description: string | null;
+  quest_type: QuestType;
+  duration_minutes: number;
+  attribute_ids: AttributeId[];
+  position: number;
+}
 
 export interface Profile {
   id: string;
@@ -20,6 +89,8 @@ export interface Profile {
   default_bedtime: string;
   default_wake_time: string;
   timezone: string;
+  difficulty_mode: DifficultyMode;
+  class_id: ClassId | null;
   created_at: string;
   updated_at: string;
 }
@@ -165,6 +236,21 @@ export interface Database {
         Row: Quest;
         Insert: Omit<Quest, "id" | "created_at" | "updated_at">;
         Update: Partial<Quest>;
+      };
+      attributes: {
+        Row: Attribute;
+        Insert: Attribute;
+        Update: Partial<Attribute>;
+      };
+      quest_attributes: {
+        Row: QuestAttribute;
+        Insert: QuestAttribute;
+        Update: Partial<QuestAttribute>;
+      };
+      user_attributes: {
+        Row: UserAttribute;
+        Insert: UserAttribute;
+        Update: Partial<UserAttribute>;
       };
     };
   };

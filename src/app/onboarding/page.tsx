@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGameStore } from "@/store/game-store";
+import { CHARACTER_CLASSES } from "@/lib/classes";
+import { ATTRIBUTE_MAP } from "@/lib/attributes";
+import type { ClassId } from "@/types/database";
 
-type Step = "vision" | "anti-vision" | "mission" | "review";
+type Step = "vision" | "anti-vision" | "mission" | "class" | "review";
 
 const steps: { key: Step; title: string; subtitle: string; placeholder: string }[] = [
   {
@@ -27,6 +30,12 @@ const steps: { key: Step; title: string; subtitle: string; placeholder: string }
     placeholder: "Launch 3 profitable SaaS products, each generating at least $1,000 MRR. Build an audience of 10,000 followers who value my work...",
   },
   {
+    key: "class",
+    title: "Choose Your Class",
+    subtitle: "Your archetype shapes your journey with pre-built schedules and focus areas.",
+    placeholder: "",
+  },
+  {
     key: "review",
     title: "Review Your Character",
     subtitle: "These define your game. You can always update them later.",
@@ -36,16 +45,21 @@ const steps: { key: Step; title: string; subtitle: string; placeholder: string }
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { loadProfile, completeOnboarding, isLoading } = useGameStore();
+  const { loadProfile, completeOnboarding, isLoading, profile } = useGameStore();
+  const hasLoaded = useRef(false);
 
   const [currentStep, setCurrentStep] = useState(0);
   const [vision, setVision] = useState("");
   const [antiVision, setAntiVision] = useState("");
   const [mission, setMission] = useState("");
+  const [selectedClass, setSelectedClass] = useState<ClassId | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    loadProfile();
+    if (!hasLoaded.current) {
+      hasLoaded.current = true;
+      loadProfile();
+    }
   }, [loadProfile]);
 
   const step = steps[currentStep];
@@ -79,6 +93,7 @@ export default function OnboardingPage() {
 
   const canProceed = () => {
     if (step.key === "review") return true;
+    if (step.key === "class") return selectedClass !== null;
     return getValue().trim().length >= 20;
   };
 
@@ -96,7 +111,7 @@ export default function OnboardingPage() {
 
   const handleComplete = async () => {
     setIsSaving(true);
-    await completeOnboarding(vision, antiVision, mission);
+    await completeOnboarding(vision, antiVision, mission, selectedClass || undefined);
     router.push("/today");
     router.refresh();
   };
@@ -158,12 +173,54 @@ export default function OnboardingPage() {
               </p>
             </div>
 
-            {/* Input or Review */}
+            {/* Input or Review or Class Selection */}
             {step.key === "review" ? (
               <div className="space-y-6">
                 <ReviewCard title="Vision" content={vision} color="hud-primary" />
                 <ReviewCard title="Anti-Vision" content={antiVision} color="hud-danger" />
                 <ReviewCard title="1-Year Mission" content={mission} color="hud-success" />
+                {selectedClass && (
+                  <ReviewCard
+                    title="Class"
+                    content={`${CHARACTER_CLASSES.find(c => c.id === selectedClass)?.icon} ${CHARACTER_CLASSES.find(c => c.id === selectedClass)?.name}`}
+                    color="hud-secondary"
+                  />
+                )}
+              </div>
+            ) : step.key === "class" ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {CHARACTER_CLASSES.map((cls) => {
+                  const isSelected = selectedClass === cls.id;
+                  return (
+                    <button
+                      key={cls.id}
+                      type="button"
+                      onClick={() => setSelectedClass(cls.id)}
+                      className={`p-4 rounded-lg border text-left transition-all ${
+                        isSelected
+                          ? "border-hud-primary bg-hud-primary/10 hud-glow-subtle"
+                          : "border-border bg-card/50 hover:bg-card"
+                      }`}
+                    >
+                      <div className="text-3xl mb-2">{cls.icon}</div>
+                      <div className={`font-hud text-sm tracking-wide ${isSelected ? "text-hud-primary" : "text-foreground"}`}>
+                        {cls.name}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        {cls.description}
+                      </p>
+                      {cls.primary_attributes.length > 0 && (
+                        <div className="flex gap-1 mt-2">
+                          {cls.primary_attributes.map((attrId) => (
+                            <span key={attrId} className="text-sm" title={ATTRIBUTE_MAP[attrId]?.name}>
+                              {ATTRIBUTE_MAP[attrId]?.icon}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <div className="relative">

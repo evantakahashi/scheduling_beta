@@ -1,4 +1,6 @@
 import type { LocalQuest, SacrificeResult } from "./types";
+import type { DifficultyMode } from "@/types/database";
+import { DIFFICULTY_CONFIG } from "./xp-calculator";
 
 /**
  * The Sacrifice Algorithm
@@ -158,12 +160,40 @@ export function recalculateScheduleTimes(
  *
  * 0 = Perfect day, bright UI
  * 100 = Failed day, Anti-Vision bleeding through
+ *
+ * Difficulty affects when darkness kicks in:
+ * - Story: Never (always 0)
+ * - Normal: At 30%+ failure rate
+ * - Hardcore: At 10%+ failure rate (bleeds faster)
  */
 export function calculateDarknessLevel(
   completedQuests: LocalQuest[],
   sacrificedQuests: LocalQuest[],
-  failedMainQuests: LocalQuest[]
+  failedMainQuests: LocalQuest[],
+  difficulty: DifficultyMode = "normal"
 ): number {
+  const config = DIFFICULTY_CONFIG[difficulty];
+
+  // Story mode: darkness disabled
+  if (config.darknessThreshold >= 100) {
+    return 0;
+  }
+
+  // Calculate failure rate (0-100)
+  const totalQuests = completedQuests.length + sacrificedQuests.length + failedMainQuests.length;
+  if (totalQuests === 0) {
+    return 0;
+  }
+
+  const failedCount = sacrificedQuests.length + failedMainQuests.length;
+  const failureRate = (failedCount / totalQuests) * 100;
+
+  // Don't show darkness until we hit the threshold
+  if (failureRate < config.darknessThreshold) {
+    return 0;
+  }
+
+  // Calculate base darkness from failures
   let darkness = 0;
 
   // Each sacrificed quest adds darkness
@@ -184,6 +214,11 @@ export function calculateDarknessLevel(
     if (avgAccuracy < 50) darkness += 30;
     else if (avgAccuracy < 70) darkness += 15;
     else if (avgAccuracy < 85) darkness += 5;
+  }
+
+  // Hardcore mode: darkness bleeds faster (1.5x intensity)
+  if (difficulty === "hardcore") {
+    darkness = Math.round(darkness * 1.5);
   }
 
   return Math.min(100, darkness);

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/store/game-store";
+import { BottomNav } from "@/components/nav/bottom-nav";
 
 export default function AppLayout({
   children,
@@ -46,6 +47,7 @@ export default function AppLayout({
   return (
     <div className="min-h-screen bg-background scan-lines">
       {children}
+      <BottomNav />
     </div>
   );
 }
